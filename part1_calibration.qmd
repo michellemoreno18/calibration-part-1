@@ -22,8 +22,10 @@ source(here("compute_HighFlow_metrics.R"))
 
 # Load data
 
+Usinf the msage RDS file.
+
 ```{r}
-msage <- readRDS(here("data/msage.RDS"))
+msage <- readRDS(here("data", "msage.RDS"))
 ```
 
 ```{r}
@@ -64,5 +66,69 @@ best_par = which.max(results$high_month_cor)
 ```
 
 ```{r}
+# Get the run names (parameter sets)
+param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", "day", "year", "wy", "obs"))]
 
+# Get index of best run
+best_par_index <- which.max(results$high_month_cor)
+
+# Get the name of the best run
+best_run_name <- param_names[best_par_index]
 ```
+
+```{r}
+best_par_index <- which.max(results$high_month_cor)
+param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", "day", "year", "wy", "obs"))]
+best_run_name <- param_names[best_par_index]
+
+cat("Best parameter set (run):", best_run_name, "\n")
+```
+
+```{r}
+best_run_data <- msage %>%
+  select(date, month, day, year, wy, obs, all_of(best_run_name))
+```
+
+## Plotting Data
+
+```{r}
+library(ggplot2)
+
+ggplot(best_run_data, aes(x = date)) +
+  geom_line(aes(y = obs), color = "black", size = 1, alpha = 0.7, linetype = "dashed") +
+  geom_line(aes_string(y = best_run_name), color = "blue", size = 1) +
+  labs(title = paste("Best Run:", best_run_name),
+       y = "Flow",
+       x = "Date") +
+  theme_minimal()
+```
+
+```{r}
+threshold <- 0.8
+acceptable_runs <- results %>% filter(high_month_cor > threshold)
+
+# Get names of acceptable runs
+acceptable_run_names <- param_names[rownames(results) %in% rownames(acceptable_runs)]
+
+cat("Number of acceptable runs:", length(acceptable_run_names), "\n")
+```
+
+```{r}
+library(tidyr)
+
+# Select columns for acceptable runs + metadata + obs
+acceptable_data <- msage %>%
+  select(date, month, day, year, wy, obs, all_of(acceptable_run_names)) %>%
+  pivot_longer(cols = all_of(acceptable_run_names), names_to = "run", values_to = "model")
+
+ggplot(acceptable_data, aes(x = date)) +
+  geom_line(aes(y = obs), color = "black", size = 1, alpha = 0.7, linetype = "dashed") +
+  geom_line(aes(y = model, color = run), alpha = 0.6) +
+  labs(title = paste("Acceptable Runs (high_month_cor >", threshold, ")"),
+       y = "Flow",
+       x = "Date") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Conclusion
