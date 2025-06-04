@@ -1,0 +1,68 @@
+---
+title: "part1_calibration"
+author: "Kyle Burt, Michelle Moreno"
+format: html
+editor: visual
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+# Sourcing metric function file
+
+Loading metric function.
+
+```{r}
+source(here("compute_HighFlow_metrics.R"))
+```
+
+# Load data
+
+```{r}
+msage <- readRDS(here("data/msage.RDS"))
+```
+
+```{r}
+# first rearrange so we can plot all results
+msagel = msage %>% 
+  gather(key = "run", value = "str", -date, 
+         -month, -day, -year, -wy,-obs)
+
+source(here("compute_HighFlow_metrics.R"))
+
+# use apply to compute for all the data
+res = msage %>% 
+  select(-date, -month, -day, -year, -wy, -obs ) %>% 
+  apply(2,FUN=compute_MaxFlow_metrics, o=msage$obs, 
+        month=msage$month, day=msage$day, 
+        year=msage$year, wy=msage$wy)
+
+# extract information from the list
+results = as.data.frame(matrix(unlist(res), byrow=T, ncol=4))
+colnames(results)=c("annual_max_err","annual_max_cor", 
+                    "high_month_err", "high_month_cor")
+
+summary(results)
+
+# graph range of performance measures
+resultsl = results %>% 
+  gather(key="metric",value="value")
+
+ggplot(resultsl, aes(metric, value)) + 
+  geom_boxplot() + 
+  facet_wrap(~metric, scales="free")
+```
+
+# Pick parameter set with greater high flow month correlation
+
+```{r}
+best_par = which.max(results$high_month_cor)
+```
+
+```{r}
+
+```
