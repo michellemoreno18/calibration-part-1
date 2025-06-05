@@ -1,7 +1,9 @@
 ---
 title: "part1_calibration"
 author: "Kyle Burt, Michelle Moreno"
-format: html
+format: 
+  html:
+    embed-resources: true
 editor: visual
 ---
 
@@ -12,7 +14,7 @@ library(tidyverse)
 library(here)
 ```
 
-# Sourcing metric function file
+# Source new metric function file
 
 ```{r}
 source(here("R/compute_HighFlow_metrics.R"))
@@ -24,22 +26,24 @@ source(here("R/compute_HighFlow_metrics.R"))
 msage <- readRDS(here("data", "msage.RDS"))
 ```
 
+# Apply Metric Evaluation to All Runs in the Dataset
+
 ```{r}
-# first rearrange so we can plot all results
+# Rearrange to plot results
 msagel = msage %>% 
   gather(key = "run", value = "str", -date, 
          -month, -day, -year, -wy,-obs)
 
 source(here("R/compute_HighFlow_metrics.R"))
 
-# use apply to compute for all the data
+# Use apply to compute for all the data
 res = msage %>% 
   select(-date, -month, -day, -year, -wy, -obs ) %>% 
-  apply(2,FUN = compute_MaxFlow_metrics, o = msage$obs, 
+  apply(2, FUN = compute_MaxFlow_metrics, o = msage$obs, 
         month = msage$month, day = msage$day, 
         year = msage$year, wy = msage$wy)
 
-# extract information from the list
+# Extract information from the list
 results = as.data.frame(matrix(unlist(res), 
                                byrow = T, ncol = 4))
 
@@ -48,7 +52,7 @@ colnames(results) = c("annual_max_err", "annual_max_cor",
 
 summary(results)
 
-# graph range of performance measures
+# Graph range of performance measures
 resultsl = results %>% 
   gather(key = "metric", value = "value")
 
@@ -65,6 +69,8 @@ best_par = which.max(results$high_month_cor)
 print(best_par)
 ```
 
+best_par: 68
+
 ```{r}
 # Get the run names (parameter sets)
 param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", 
@@ -78,6 +84,8 @@ best_par_index <- which.max(results$high_month_cor)
 best_run_name <- param_names[best_par_index]
 ```
 
+### Determine best parameter set
+
 ```{r}
 best_par_index <- which.max(results$high_month_cor)
 
@@ -88,6 +96,8 @@ best_run_name <- param_names[best_par_index]
 
 cat("Best parameter set (run):", best_run_name, "\n")
 ```
+
+Best parameter set: V68 
 
 ```{r}
 best_run_data <- msage %>%
