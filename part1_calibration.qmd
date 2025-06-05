@@ -14,15 +14,11 @@ library(here)
 
 # Sourcing metric function file
 
-Loading metric function.
-
 ```{r}
-source(here("compute_HighFlow_metrics.R"))
+source(here("R/compute_HighFlow_metrics.R"))
 ```
 
-# Load data
-
-Usinf the msage RDS file.
+# Load data (msage RDS file)
 
 ```{r}
 msage <- readRDS(here("data", "msage.RDS"))
@@ -34,40 +30,46 @@ msagel = msage %>%
   gather(key = "run", value = "str", -date, 
          -month, -day, -year, -wy,-obs)
 
-source(here("compute_HighFlow_metrics.R"))
+source(here("R/compute_HighFlow_metrics.R"))
 
 # use apply to compute for all the data
 res = msage %>% 
   select(-date, -month, -day, -year, -wy, -obs ) %>% 
-  apply(2,FUN=compute_MaxFlow_metrics, o=msage$obs, 
-        month=msage$month, day=msage$day, 
-        year=msage$year, wy=msage$wy)
+  apply(2,FUN = compute_MaxFlow_metrics, o = msage$obs, 
+        month = msage$month, day = msage$day, 
+        year = msage$year, wy = msage$wy)
 
 # extract information from the list
-results = as.data.frame(matrix(unlist(res), byrow=T, ncol=4))
-colnames(results)=c("annual_max_err","annual_max_cor", 
+results = as.data.frame(matrix(unlist(res), 
+                               byrow = T, ncol = 4))
+
+colnames(results) = c("annual_max_err", "annual_max_cor", 
                     "high_month_err", "high_month_cor")
 
 summary(results)
 
 # graph range of performance measures
 resultsl = results %>% 
-  gather(key="metric",value="value")
+  gather(key = "metric", value = "value")
 
 ggplot(resultsl, aes(metric, value)) + 
   geom_boxplot() + 
-  facet_wrap(~metric, scales="free")
+  facet_wrap(~metric, scales = "free")
 ```
 
 # Pick parameter set with greater high flow month correlation
 
 ```{r}
 best_par = which.max(results$high_month_cor)
+
+print(best_par)
 ```
 
 ```{r}
 # Get the run names (parameter sets)
-param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", "day", "year", "wy", "obs"))]
+param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", 
+                                                        "day", "year", 
+                                                        "wy", "obs"))]
 
 # Get index of best run
 best_par_index <- which.max(results$high_month_cor)
@@ -78,7 +80,10 @@ best_run_name <- param_names[best_par_index]
 
 ```{r}
 best_par_index <- which.max(results$high_month_cor)
-param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", "day", "year", "wy", "obs"))]
+
+param_names <- colnames(msage)[!(colnames(msage) %in% c("date", "month", 
+                                                        "day", "year", 
+                                                        "wy", "obs"))]
 best_run_name <- param_names[best_par_index]
 
 cat("Best parameter set (run):", best_run_name, "\n")
@@ -92,23 +97,23 @@ best_run_data <- msage %>%
 ## Plotting Data
 
 ```{r}
-library(ggplot2)
-
 ggplot(best_run_data, aes(x = date)) +
-  geom_line(aes(y = obs), color = "black", size = 1, alpha = 0.7, linetype = "dashed") +
+  geom_line(aes(y = obs), color = "black", size = 1, alpha = 0.7, 
+            linetype = "dashed") +
   geom_line(aes_string(y = best_run_name), color = "blue", size = 1) +
   labs(title = paste("Best Run:", best_run_name),
-       y = "Flow",
-       x = "Date") +
+       y = "Flow", x = "Date") +
   theme_minimal()
 ```
 
 ```{r}
 threshold <- 0.8
+
 acceptable_runs <- results %>% filter(high_month_cor > threshold)
 
 # Get names of acceptable runs
-acceptable_run_names <- param_names[rownames(results) %in% rownames(acceptable_runs)]
+acceptable_run_names <- 
+  param_names[rownames(results) %in% rownames(acceptable_runs)]
 
 cat("Number of acceptable runs:", length(acceptable_run_names), "\n")
 ```
@@ -118,17 +123,17 @@ library(tidyr)
 
 # Select columns for acceptable runs + metadata + obs
 acceptable_data <- msage %>%
-  select(date, month, day, year, wy, obs, all_of(acceptable_run_names)) %>%
-  pivot_longer(cols = all_of(acceptable_run_names), names_to = "run", values_to = "model")
+  select(date, month, day, year, 
+         wy, obs, all_of(acceptable_run_names)) %>% 
+  pivot_longer(cols = all_of(acceptable_run_names), 
+               names_to = "run", values_to = "model")
 
 ggplot(acceptable_data, aes(x = date)) +
-  geom_line(aes(y = obs), color = "black", size = 1, alpha = 0.7, linetype = "dashed") +
+  geom_line(aes(y = obs), color = "black", size = 1, 
+            alpha = 0.7, linetype = "dashed") +
   geom_line(aes(y = model, color = run), alpha = 0.6) +
   labs(title = paste("Acceptable Runs (high_month_cor >", threshold, ")"),
-       y = "Flow",
-       x = "Date") +
+       y = "Flow", x = "Date") +
   theme_minimal() +
   theme(legend.position = "none")
 ```
-
-## Conclusion
