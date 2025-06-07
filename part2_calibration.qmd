@@ -1,0 +1,160 @@
+---
+title: "part2_calibration"
+author: "Kyle Burt, Michelle Moreno"
+format: html
+editor: visual
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+# Read metric function
+
+```{r}
+source(here("R/compute_HighFlowMetrics_all.R"))
+```
+
+# Load data
+
+```{r}
+msage <- readRDS(here("data", "msage.RDS"))
+```
+
+# Rearrange data
+
+```{r}
+msagel <- msage |> 
+  gather(key = "sim", value = "str", -date, 
+         -month, -day, -year, -wy,-obs)
+```
+
+# Apply accurracy measure to each parameter set 
+
+```{r}
+res <-  msage |> 
+  select(-date, -month, -day, -year, -wy, -obs ) |>
+  apply(2, compute_HighFlowMetrics_all, o = msage$obs,
+        month = msage$month, year = msage$year, 
+        day = msage$day, wy = msage$wy) 
+
+results <- as.data.frame(matrix(unlist(res), 
+                               byrow = T, ncol = 5))
+
+colnames(results) <- c("annual_min_err", "annual_min_cor", 
+                       "low_month_err", "low_month_cor", 
+                       "combined")
+
+results$sim <- msage |> 
+  select(-date, -month, -day, -year, -wy, -obs ) |> 
+  colnames()
+```
+
+# Use accuracy measure
+
+```{r}
+summary(results$combined)
+
+# 1) Selecting behavioral or acceptable parameters sets
+threshold <- 0.3
+
+results_acc <- subset(results, combined > threshold)
+
+head(results_acc)
+
+# Top N parameter sets
+topN <- 50
+
+tmp <- results[order(results$combined, decreasing = T), ]
+
+results_acc <- tmp[1:topN, ]
+
+head(results_acc)
+```
+
+# Defining weights for parameter sets
+
+### Weighting in R
+
+```{r}
+# Create a weight for each parameter set based on its relative accuracy
+max_acc <- max(results_acc$combined)
+
+min_acc <- min(results_acc$combined)
+
+# Normalize weights
+results_acc$w_acc <- (results_acc$combined - min_acc) / (max_acc - min_acc)
+
+# Make sure weights sum to one
+sum_acc <- sum(results_acc$combined)
+
+results_acc$wt_acc <- results_acc$combined / sum_acc
+
+# Look at values
+summary(results_acc$wt_acc)
+
+# Check to see that they sum to one
+sum(results_acc$wt_acc)
+
+Nacc <- nrow(results_acc)
+
+print(Nacc)
+```
+
+# Using weights
+
+### MLE in R
+
+```{r}
+# Generate streamflow as weighted average of all acceptable parameter sets
+
+# Subset only acceptable runs
+msagel_acc <- subset(msagel, sim %in% results_acc$sim)
+
+# Join with weights from res_acc, left_join will repeat weights for each day in streamflow trajectory
+msagel_acc <- left_join(msagel_acc, results_acc, by = "sim")
+
+head(msagel_acc)
+
+# Finally multiply flow by weight
+msagel_acc <- msagel_acc |> 
+  mutate(str_wt = str * wt_acc)
+
+# Now we can average streamflow for each day from all the runs # using the weights
+aver_flow <- msagel_acc |>
+  group_by(date) |>
+  dplyr::summarize(str_mse = sum(str_wt))
+
+# Add some date information 
+aver_flow <- left_join(aver_flow, msage[, c("date", "month", 
+                                            "year", "day", 
+                                            "wy", "obs")],
+  by = c("date"))
+```
+
+# Graphs
+
+### Pivot data
+
+```{r}
+aver_flowl <- aver_flow |> 
+  pivot_longer(cols = c(str_mse, obs), values_to = "str", 
+               names_to = "type")
+```
+
+### Graphs of MLE
+
+Here as of 5:29PM on 6/6/25
+
+```{r}
+ggplot(aver_flowl, aes(x = date, y = str, col = type)) +
+  geom_line()+
+  labs(y = "Streamflow mm/day")
+
+# Add some of the other date info and plot a subset
+wycheck <- 1985
+ggplot(subset(aver_flowl, wy == wycheck), aes(x = date, y = str, col=type)) +  labs(y = "Streamflow mm/day") + geom_line()
+```

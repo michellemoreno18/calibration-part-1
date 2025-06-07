@@ -97,7 +97,7 @@ best_run_name <- param_names[best_par_index]
 cat("Best parameter set (run):", best_run_name, "\n")
 ```
 
-Best parameter set: V68 
+Best parameter set: V68
 
 ```{r}
 best_run_data <- msage %>%
