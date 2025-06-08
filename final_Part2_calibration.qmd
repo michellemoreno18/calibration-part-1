@@ -1,7 +1,9 @@
 ---
 title: "final_Part2_calibration"
-author: "Kyle Burt"
-format: html
+author: "Kyle Burt, Michelle Moreno"
+format: 
+  html:
+    embed-resources: true
 editor: visual
 ---
 
