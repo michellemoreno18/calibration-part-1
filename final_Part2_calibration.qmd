@@ -1,0 +1,236 @@
+---
+title: "final_Part2_calibration"
+author: "Kyle Burt"
+format: html
+editor: visual
+---
+
+For this assignment, we use performance values derived from our high flow metric in Calibration Part 1 to generate a Maximum Likelihood Estimate (MLE) of streamflow. We focus on daily streamflow and February flow as our streamflow components of interest. Weighted average streamflows are computed using the top-performing parameter sets based on high flow month correlation. We then compare observed values to MLE results and compute correlations to evaluate model performance.
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+# Read metric function
+
+```{r}
+source(here("R/compute_HighFlowMetrics_all.R"))
+```
+
+# Load msage data
+
+```{r}
+msage <- readRDS(here("data", "msage.RDS"))
+```
+
+# Rearrange data
+
+```{r}
+msagel <- msage |> 
+  gather(key = "sim", value = "str", -date, 
+         -month, -day, -year, -wy, -obs)
+```
+
+# Apply accuracy measure to each parameter set
+
+```{r}
+res <-  msage |> 
+  select(-date, -month, -day, -year, -wy, -obs ) |>
+  apply(2, compute_HighFlowMetrics_all, o = msage$obs,
+        month = msage$month, year = msage$year, 
+        day = msage$day, wy = msage$wy) 
+
+results <- as.data.frame(matrix(unlist(res), 
+                               byrow = T, ncol = 5))
+
+colnames(results) <- c("annual_min_err", "annual_min_cor", 
+                       "low_month_err", "low_month_cor", 
+                       "combined")
+
+results$sim <- msage |> 
+  select(-date, -month, -day, -year, -wy, -obs ) |> 
+  colnames()
+
+summary(results)
+```
+
+# Use accuracy measure
+
+```{r}
+summary(results$combined)
+
+# 1) Selecting behavioral or acceptable parameters sets
+threshold <- 0.3
+
+results_acc <- subset(results, combined > threshold)
+
+head(results_acc)
+
+# Top N parameter sets
+topN <- 50
+
+tmp <- results[order(results$combined, decreasing = T), ]
+
+results_acc <- tmp[1:topN, ]
+
+head(results_acc)
+```
+
+# Defining weights for parameter sets
+
+### Weighting by performance score, normalizing weights for weighted averaging
+
+```{r}
+# Create a weight for each parameter set based on its relative accuracy
+max_acc <- max(results_acc$combined)
+
+min_acc <- min(results_acc$combined)
+
+# Normalize weights
+results_acc$w_acc <- (results_acc$combined - min_acc) / (max_acc - min_acc)
+
+# Make sure weights sum to one
+sum_acc <- sum(results_acc$combined)
+
+results_acc$wt_acc <- results_acc$combined / sum_acc
+
+# Look at values
+summary(results_acc$wt_acc)
+
+# Check to see that they sum to one
+sum(results_acc$wt_acc)
+
+Nacc <- nrow(results_acc)
+
+print(Nacc)
+```
+
+# Using weights
+
+### MLE Daily Flow Computation
+
+```{r}
+# Generate streamflow as weighted average of all acceptable parameter sets
+
+# Subset only acceptable runs
+msagel_acc <- subset(msagel, sim %in% results_acc$sim)
+
+# Join with weights from res_acc, left_join will repeat weights for each day in streamflow trajectory
+msagel_acc <- left_join(msagel_acc, results_acc, by = "sim")
+
+head(msagel_acc)
+
+# Finally multiply flow by weight
+msagel_acc <- msagel_acc |> 
+  mutate(str_wt = str * wt_acc)
+
+# Now we can average streamflow for each day from all the runs # using the weights
+aver_flow <- msagel_acc |>
+  group_by(date) |>
+  dplyr::summarize(str_mse = sum(str_wt))
+
+# Add some date information 
+aver_flow <- left_join(aver_flow, msage[, c("date", "month", 
+                                            "year", "day", 
+                                            "wy", "obs")],
+  by = c("date"))
+```
+
+# Graphs
+
+### Pivot data
+
+```{r}
+aver_flowl <- aver_flow |> 
+  pivot_longer(cols = c(str_mse, obs), values_to = "str", 
+               names_to = "type")
+```
+
+### Graphs of MLE and Observed Daily Streamflow
+
+```{r}
+ggplot(aver_flowl, aes(x = date, y = str, col = type)) +
+  geom_line()+
+  labs(y = "Streamflow mm/day") + 
+  theme_bw()
+
+# Add some of the other date info and plot a subset
+wycheck <- 1985
+
+ggplot(subset(aver_flowl, wy == wycheck), 
+       aes(x = date, y = str, col = type)) +  
+  labs(y = "Streamflow mm/day") + 
+  geom_line() + 
+  theme_bw()
+```
+
+### MLE for Monthly Flow (February)
+
+```{r}
+# Summarize monthly flow
+msagel_month <- msagel |>
+  group_by(month, wy, sim) |>
+  dplyr::summarize(str = sum(str), obs = sum(obs))
+
+# Extract only acceptable runs
+msagel_acc_month <- subset(msagel_month, sim %in% results_acc$sim)
+
+# Join with weights from res_acc, left_join will repeat weights for each month in streamflow trajectory
+msagel_acc_month <- left_join(msagel_acc_month, 
+                              results_acc, by = "sim")
+
+# Now MSE for monthly flow
+mse_flow <- msagel_acc_month |>  
+  group_by(wy, month) |>
+  dplyr::summarize(str_mse = sum(str * wt_acc), obs = mean(obs))
+
+# For comparison, compute MSE for all simulations
+mse_flow_all <- msagel_month |>
+  group_by(wy, month) |>
+  dplyr::summarize(str_mse = mean(str))
+
+mse_flow_all <- left_join(mse_flow_all, mse_flow, 
+                          by = c("wy", "month"), 
+                          suffix = c("_all", "_mse"))
+
+# See the impact of calibration
+tmp <- mse_flow_all |> 
+  subset(month == 2)
+```
+
+# Evaluate Model Performance Using Correlation
+
+### Correlation for Target Month (February)
+
+```{r}
+cor(tmp$str_mse_all, tmp$obs)
+
+cor(tmp$str_mse_mse, tmp$obs)
+```
+
+### Correlation Across All Months
+
+```{r}
+cor(mse_flow_all$str_mse_all, mse_flow_all$obs)
+
+cor(mse_flow_all$str_mse_mse, mse_flow_all$obs)
+```
+
+# Graph Monthly MLE
+
+Used "month == 2" for February as a high flow month
+
+```{r}
+p1 <- ggplot(subset(msagel_acc_month, month == 2), 
+             aes(wy, str, group = wy)) + 
+  geom_boxplot(position = "dodge") +
+  geom_point(aes(wy, obs), col = "red") +
+  labs(y = "Streamflow", x = "Date") + 
+  theme_bw()
+
+p1 + geom_point(data = subset(mse_flow, month == 2), 
+                aes(wy, str_mse), col = "blue")
+```

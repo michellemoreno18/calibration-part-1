@@ -93,7 +93,7 @@ head(results_acc)
 
 # Defining weights for parameter sets
 
-### Weighting by performance score, normalizing weights for weighted averaging. 
+### Weighting by performance score, normalizing weights for weighted averaging.
 
 ```{r}
 # Create a weight for each parameter set based on its relative accuracy
